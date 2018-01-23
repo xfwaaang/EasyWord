@@ -42,11 +42,4 @@ public class OkHttpUtils {
         return mOkHttpClient.newCall(request);
     }
 
-    public void download(String url, String fileName){
-        String rootPath = Environment.getExternalStorageDirectory().getAbsolutePath();
-        File rootDir = new File(rootPath,"EasyWord");
-        if (!FileUtils.createDir(rootDir))  return;
-
-        final File file = new File(rootDir.getAbsolutePath(),fileName);
-    }
 }

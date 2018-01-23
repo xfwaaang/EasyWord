@@ -9,6 +9,7 @@ import android.support.v7.app.AppCompatActivity;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.Button;
@@ -20,6 +21,7 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 import com.squareup.okhttp.Callback;
 import com.squareup.okhttp.Request;
 import com.squareup.okhttp.Response;
@@ -40,7 +42,7 @@ public class MainActivity extends AppCompatActivity implements TextWatcher, View
     private static final String TAG = "MainActivity";
 //    联想词汇url
     private static String ASSOCIATE_URL = "http://dict-mobile.iciba.com/interface/index.php?c=word&m=getsuggest&nums=10&client=6&is_need_mean=1&word=";
-//    翻译单词或句子
+//    翻译单词或句子url
     private static String TRANSLATE_URL = "http://fy.iciba.com/ajax.php?a=fy&f=auto&t=auto&w=";
 
     private EditText etInput;
@@ -53,13 +55,15 @@ public class MainActivity extends AppCompatActivity implements TextWatcher, View
     private ImageView ivPhEnMp3, ivPhAmMp3;
     private TextView tvMeans;
 
+//    展示联想词汇列表
     private ListView mListView;
 
     private OkHttpUtils mOkHttpUtils = OkHttpUtils.getInstance();
 
     private ExecutorService mThreadPool = Executors.newCachedThreadPool();
 
-    private String phEnMp3Url, phAmMp3Url;
+//    单词和短语发音url
+    private String phEnMp3Url, phAmMp3Url, phTtsMp3Url;
 
     private List<com.xiaofeng.easyword.beans.Message> mMessageList;
 
@@ -68,6 +72,7 @@ public class MainActivity extends AppCompatActivity implements TextWatcher, View
         public void handleMessage(Message msg) {
             super.handleMessage(msg);
             switch (msg.what){
+//                设置联想词汇列表数据
                 case 0:
                     AssoBean assoBean = (AssoBean) msg.obj;
                     mMessageList = assoBean.getMessage();
@@ -76,28 +81,31 @@ public class MainActivity extends AppCompatActivity implements TextWatcher, View
                     mListView.setVisibility(View.VISIBLE);
                     mListView.setAdapter(adapter);
                     break;
+//                    翻译
                 case 1:
                     TranslateBean translateBean = (TranslateBean) msg.obj;
                     Content content = translateBean.getContent();
                     int status = translateBean.getStatus();
-                    if (status == 0){
+                    if (status == 0){       //翻译单词
                         StringBuilder stringBuilder = new StringBuilder();
                         for (String s : content.getWord_mean()) {
                             stringBuilder.append(s).append("\n");
                         }
                         phEnMp3Url = content.getPh_en_mp3();
                         phAmMp3Url = content.getPh_am_mp3();
+                        phTtsMp3Url = content.getPh_tts_mp3();
                         tvPhEn.setText("英 [" + content.getPh_en() + "]");
                         tvPhAm.setText("美 [" + content.getPh_am() + "]");
                         tvMeans.setText(stringBuilder.toString());
 
                         loadPhMp3();
-                    }else if (status == 1){
+                    }else if (status == 1){         //翻译句子
                         tvMeans.setText(translateBean.getContent().getOut());
                     }
                     mListView.setVisibility(View.GONE);
                     mTranView.setVisibility(View.VISIBLE);
                     break;
+//                    加载英式发音
                 case 2:
                     try {
                         FileInputStream enIS = openFileInput(ph_en_file_name);
@@ -106,6 +114,7 @@ public class MainActivity extends AppCompatActivity implements TextWatcher, View
                         e.printStackTrace();
                     }
                     break;
+//                    加载美式发音
                 case 3:
                     try {
                         FileInputStream amIS = openFileInput(ph_am_file_name);
@@ -173,14 +182,15 @@ public class MainActivity extends AppCompatActivity implements TextWatcher, View
 
     }
 
+//    输入框中文本变化，加载联想词汇
     @Override
     public void onTextChanged(final CharSequence charSequence, int i, int i1, int i2) {
         if (TextUtils.isEmpty(charSequence))    return;
         Runnable runnable = new Runnable() {
             @Override
             public void run() {
-                StringBuffer stringBuffer = new StringBuffer(ASSOCIATE_URL);
-                String url = stringBuffer.append(charSequence).toString().split(" ")[0];
+                StringBuilder builder = new StringBuilder(ASSOCIATE_URL);
+                String url = builder.append(charSequence).toString().split(" ")[0];
                 mOkHttpUtils.get(url).enqueue(new Callback() {
                     @Override
                     public void onFailure(Request request, IOException e) {
@@ -191,12 +201,17 @@ public class MainActivity extends AppCompatActivity implements TextWatcher, View
                     public void onResponse(Response response) throws IOException {
                         String json = response.body().string();
                         if (response.code() == 200 && json.split(":")[1].contains("1")){
-                            Gson gson = new Gson();
-                            AssoBean assoBean = gson.fromJson(json, AssoBean.class);
-                            Message msg = new Message();
-                            msg.obj = assoBean;
-                            msg.what = 0;
-                            mHandler.sendMessage(msg);
+                            try {
+                                Gson gson = new Gson();
+                                AssoBean assoBean = gson.fromJson(json, AssoBean.class);
+                                Message msg = new Message();
+                                msg.obj = assoBean;
+                                msg.what = 0;
+                                mHandler.sendMessage(msg);
+                            }catch (JsonSyntaxException e){
+                                e.printStackTrace();
+                            }
+
                         }
                     }
                 });
@@ -225,10 +240,12 @@ public class MainActivity extends AppCompatActivity implements TextWatcher, View
                 translate();
                 break;
             case R.id.iv_ph_en_mp3:
-                mSoundPool.play(enSoundId,1,1,1,0,1);
+                if (mSoundPool != null)
+                    mSoundPool.play(enSoundId,1,1,1,0,1);
                 break;
             case R.id.iv_ph_am_mp3:
-                mSoundPool.play(amSoundId,1,1,1,0,1);
+                if (mSoundPool != null)
+                    mSoundPool.play(amSoundId,1,1,1,0,1);
                 break;
         }
     }
@@ -240,10 +257,16 @@ public class MainActivity extends AppCompatActivity implements TextWatcher, View
     private SoundPool mSoundPool;
 
     private void loadPhMp3(){
-        if (TextUtils.isEmpty(phEnMp3Url) || TextUtils.isEmpty(phAmMp3Url))
-            return;
+        if (TextUtils.isEmpty(phEnMp3Url) || TextUtils.isEmpty(phAmMp3Url)){
+            if (TextUtils.isEmpty(phTtsMp3Url))     return;
+            else{
+                phEnMp3Url = phTtsMp3Url;
+                phAmMp3Url = phTtsMp3Url;
+            }
+        }
 
         mSoundPool = new SoundPool(2,AudioManager.STREAM_MUSIC,5);
+//        加载音频并保存到本地
         mOkHttpUtils.get(phEnMp3Url).enqueue(new Callback() {
             @Override
             public void onFailure(Request request, IOException e) {
@@ -258,7 +281,6 @@ public class MainActivity extends AppCompatActivity implements TextWatcher, View
                     BufferedOutputStream bufferOs = new BufferedOutputStream(os);
                     bufferOs.write(data);
 
-                    if (os != null)     os.close();
                     bufferOs.close();
                     mHandler.sendEmptyMessage(2);
                 }
@@ -278,7 +300,6 @@ public class MainActivity extends AppCompatActivity implements TextWatcher, View
                     BufferedOutputStream bufferOs = new BufferedOutputStream(os);
                     bufferOs.write(data);
 
-                    if (os != null)     os.close();
                     bufferOs.close();
                     mHandler.sendEmptyMessage(3);
                 }
@@ -286,45 +307,13 @@ public class MainActivity extends AppCompatActivity implements TextWatcher, View
         });
     }
 
-    private Callback mPhCallBack = new Callback() {
-        BufferedOutputStream bufferOs;
-        FileOutputStream os;
-        @Override
-        public void onFailure(Request request, IOException e) {
-
-        }
-
-        @Override
-        public void onResponse(Response response) throws IOException {
-            if (response.code() != 200)     return;
-
-            String url = response.request().urlString();
-            byte[] data = response.body().bytes();
-            if (TextUtils.equals(url,phEnMp3Url)){
-                os = openFileOutput(ph_en_file_name,MODE_PRIVATE);
-                bufferOs = new BufferedOutputStream(os);
-                bufferOs.write(data);
-            }else if (TextUtils.equals(url,phAmMp3Url)){
-                os = openFileOutput(ph_am_file_name,MODE_PRIVATE);
-                bufferOs = new BufferedOutputStream(os);
-                bufferOs.write(data);
-            }
-
-            mHandler.sendEmptyMessage(2);
-
-            if (os != null)     os.close();
-            if (bufferOs != null)       bufferOs.close();
-        }
-    };
-
-
-//    显示翻译详情页
+//    加载翻译结果，显示翻译详情页
     private void translate() {
         Runnable runnable = new Runnable() {
             @Override
             public void run() {
-                StringBuffer stringBuffer = new StringBuffer(TRANSLATE_URL);
-                String url = stringBuffer.append(etInput.getText().toString().trim()).toString();
+                StringBuilder builder = new StringBuilder(TRANSLATE_URL);
+                String url = builder.append(etInput.getText().toString().trim()).toString();
                 mOkHttpUtils.get(url).enqueue(new Callback() {
                     @Override
                     public void onFailure(Request request, IOException e) {

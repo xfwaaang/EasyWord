@@ -9,6 +9,7 @@ public class Content {
     private String ph_am;
     private String ph_en_mp3;
     private String ph_am_mp3;
+    private String ph_tts_mp3;
 
     public String getOut() {
         return out;
@@ -56,5 +57,13 @@ public class Content {
 
     public void setPh_am_mp3(String ph_am_mp3) {
         this.ph_am_mp3 = ph_am_mp3;
+    }
+
+    public String getPh_tts_mp3() {
+        return ph_tts_mp3;
+    }
+
+    public void setPh_tts_mp3(String ph_tts_mp3) {
+        this.ph_tts_mp3 = ph_tts_mp3;
     }
 }
